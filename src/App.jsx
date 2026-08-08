@@ -686,6 +686,7 @@ export default function App() {
   const [cartDrawerOpen,setCartDrawerOpen]=useState(true); // mobile cart drawer
   const [billCustName,setBillCustName]=useState("");
   const [billCustPhone,setBillCustPhone]=useState("");
+  const [billDate,setBillDate]=useState(()=>new Date().toISOString().slice(0,10)); // yyyy-mm-dd, defaults to today; editable for back-dated bills
   const [mixPay,setMixPay]=useState({cash:"",upi:""});
   const [showMix,setShowMix]=useState(false);
   const [serverOk,setServerOk]=useState(null);
@@ -943,7 +944,13 @@ export default function App() {
     const total=sub+gst+packaging;
     const bn=`KC-${billN}`;
     const now=nowStr();
-    const [date,time]=now.includes(", ")?now.split(", "):[todayStr(),now];
+    let [date,time]=now.includes(", ")?now.split(", "):[todayStr(),now];
+    const todayISO=new Date().toISOString().slice(0,10);
+    if(billDate && billDate!==todayISO){
+      // Back-dated bill — override date portion only, keep current time (when it was actually entered)
+      const [y,m,d]=billDate.split("-");
+      date=`${parseInt(d,10)}/${parseInt(m,10)}/${y}`;
+    }
     const bill={
       id:Date.now(),billNo:bn,table:selTable,
       items:cart.map(i=>({name:i.name,price:i.price,qty:i.qty})),
@@ -1020,7 +1027,7 @@ export default function App() {
       return updated;
     });
     // Reset cart
-    setCart([]);setBillCustName("");setBillCustPhone("");setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
+    setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(new Date().toISOString().slice(0,10));setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
     setPrintBill(bill);
     notify("Bill "+bn+" generated!"); addLog("BILL_GENERATED", bn+" T"+selTable+" "+fmt(total)+" "+mode);
     // WhatsApp button is in the print modal — no popup needed
@@ -1305,7 +1312,19 @@ export default function App() {
                 // Partial suggestions: show matching customers as you type (tap to fill all 10 digits)
                 const partialMatches=billCustPhone.length>=4&&billCustPhone.length<10
                   ?customers.filter(c=>c.phone.startsWith(billCustPhone)).slice(0,4):[];
+                const todayISODesk=new Date().toISOString().slice(0,10);
                 return (
+                  <>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                    <label style={{fontSize:11,color:C.muted,fontWeight:700,whiteSpace:"nowrap"}}>📅 Bill Date</label>
+                    <input type="date" value={billDate} max={todayISODesk} onChange={e=>setBillDate(e.target.value||todayISODesk)} style={{fontSize:12,padding:"5px 8px",flex:"0 0 auto"}}/>
+                    {billDate!==todayISODesk && (
+                      <>
+                        <span style={{fontSize:11,fontWeight:700,color:"#8a6100"}}>Back-dated</span>
+                        <button onClick={()=>setBillDate(todayISODesk)} style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:C.accent,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Reset to today</button>
+                      </>
+                    )}
+                  </div>
                   <div style={{marginBottom:10}}>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:4}}>
                       <input placeholder="Customer name" value={billCustName} onChange={e=>setBillCustName(e.target.value)} style={{fontSize:12,padding:"7px 10px"}}/>
@@ -1346,6 +1365,7 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                  </>
                 );
               })()}
               {cart.length===0 ? (
@@ -1429,7 +1449,7 @@ export default function App() {
                     <div style={{display:"flex",gap:6,marginBottom:8}}>
                       <Btn full v="muted" size="sm" onClick={saveOrder}>💾 Save Order</Btn>
                       <Btn v="danger" size="sm" onClick={()=>{if(!cart.length)return;if(window.confirm("Clear all items from cart?")){
-              setCart([]);setBillCustName("");setBillCustPhone("");setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
+              setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(new Date().toISOString().slice(0,10));setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
               if(selTable){
                 const cleared={id:selTable,status:"free",order:[]};
                 markTableFreed(selTable);
@@ -1514,6 +1534,18 @@ export default function App() {
                 <div style={{fontWeight:800,fontSize:15,padding:"10px 0 8px",borderTop:"1px solid #d6ccb8",display:"flex",justifyContent:"space-between"}}>
                   <span>Total</span><span style={{color:"#b85c00"}}>{fmt(grandTotal)}</span>
                 </div>
+                {(()=>{
+                  const todayISOMob=new Date().toISOString().slice(0,10);
+                  return (
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                      <label style={{fontSize:11,color:"#7a6a50",fontWeight:700,whiteSpace:"nowrap"}}>📅 Date</label>
+                      <input type="date" value={billDate} max={todayISOMob} onChange={e=>setBillDate(e.target.value||todayISOMob)} style={{fontSize:12,padding:"5px 8px",flex:"0 0 auto"}}/>
+                      {billDate!==todayISOMob && (
+                        <button onClick={()=>setBillDate(todayISOMob)} style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:"#b85c00",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Today</button>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div style={{display:"flex",gap:6,marginBottom:8}}>
                   <Btn full v="muted" size="sm" onClick={saveOrder}>💾 Save</Btn>
                   <Btn v="danger" size="sm" onClick={()=>{if(!cart.length)return;if(window.confirm("Clear cart?")){setCart([]);if(selTable){const cleared={id:selTable,status:"free",order:[]};setTables(prev=>prev.map(t=>t.id===selTable?cleared:t));fbSet(`tables/${selTable}`,cleared);}}}}>🗑</Btn>
