@@ -936,7 +936,7 @@ export default function App() {
     notify("Order saved for Table "+selTable);
   };
 
-  const generateBill=async(mode)=>{
+  const generateBill=async(mode,opts={})=>{
     if(!cart.length){notify("Cart is empty","danger");return;}
     const sub=cart.reduce((s,i)=>s+i.price*i.qty,0);
     const gst=applyGST?Math.round(sub*0.05):0;
@@ -953,7 +953,8 @@ export default function App() {
       upiAmt:mode==="Mix"?Number(mixPay.upi)||0:0,
       custName:billCustName,custPhone:billCustPhone,
       time,date,
-      paymentStatus:"paid", // "paid" | "unpaid" — can be changed in Bills tab
+      isDelivery:opts.isDelivery||false,
+      paymentStatus:opts.paymentStatus||"paid", // "paid" | "unpaid" — can be changed in Bills tab
     };
     setBills(prev=>[bill,...prev]);
     setBillN(n=>n+1);
@@ -1134,7 +1135,7 @@ export default function App() {
     {id:"tables",l:"🪑 Tables"},
     {id:"menu",l:"📋 Menu"},
     {id:"inventory",l:"📦 Inventory"},
-    {id:"bills",l:`🗒 Bills${bills.filter(b=>b.paymentStatus==="unpaid").length>0?" 🔴"+bills.filter(b=>b.paymentStatus==="unpaid").length:""}`},
+    {id:"bills",l:`🗒 Bills${bills.filter(b=>b.paymentStatus==="unpaid").length>0?" 🔴"+bills.filter(b=>b.paymentStatus==="unpaid").length:""}${bills.filter(b=>b.isDelivery&&b.paymentStatus==="unpaid").length>0?" 🛵"+bills.filter(b=>b.isDelivery&&b.paymentStatus==="unpaid").length:""}`},
     {id:"reports",l:"📊 Reports"},
     {id:"expenses",l:"💸 Expenses"},
     {id:"qr",l:`📱 QR${qrOrders.length?` 🔴${qrOrders.length}`:""}` },
@@ -1442,6 +1443,9 @@ export default function App() {
                       <Btn full v="primary" onClick={()=>generateBill("UPI")}>📱 UPI</Btn>
                     </div>
                     <div style={{marginTop:6}}>
+                      <Btn full size="sm" onClick={()=>generateBill("UPI",{paymentStatus:"unpaid",isDelivery:true})} style={{background:"#e8f0fe",color:"#1a56db",border:"1px solid #1a56db55"}}>🛵 Delivery (unpaid — collect later)</Btn>
+                    </div>
+                    <div style={{marginTop:6}}>
                       {!showMix ? (
                         <Btn full v="ghost" size="sm" onClick={()=>setShowMix(true)}>+ Mix Payment</Btn>
                       ) : (
@@ -1520,6 +1524,9 @@ export default function App() {
                 </div>
                 <div style={{marginTop:6}}>
                   <Btn full v="ghost" size="sm" onClick={()=>{generateBill("Mix");setCartDrawerOpen(false);}}>🔀 Mix Payment</Btn>
+                </div>
+                <div style={{marginTop:6}}>
+                  <Btn full size="sm" onClick={()=>{generateBill("UPI",{paymentStatus:"unpaid",isDelivery:true});setCartDrawerOpen(false);}} style={{background:"#e8f0fe",color:"#1a56db",border:"1px solid #1a56db55"}}>🛵 Delivery (unpaid — collect later)</Btn>
                 </div>
               </>
             )}
@@ -1739,7 +1746,8 @@ export default function App() {
         if(billFilter==="today") filtered=bills.filter(b=>toISO2(b.date)===todayISO2);
         else if(billFilter==="yesterday") filtered=bills.filter(b=>toISO2(b.date)===yestISO2);
         else if(billFilter==="custom") filtered=bills.filter(b=>{const d=toISO2(b.date);return d>=billDateFrom&&d<=billDateTo;});
-        else if(billFilter==="unpaid") filtered=bills.filter(b=>b.paymentStatus==="unpaid");
+        if(billFilter==="unpaid") filtered=bills.filter(b=>b.paymentStatus==="unpaid");
+        else if(billFilter==="delivery") filtered=bills.filter(b=>b.isDelivery);
         // Sort
         const billNum = bn => parseInt(String(bn||"0").replace(/\D/g,""))||0;
         if(billSort==="oldest") filtered.sort((a,b)=>billNum(a.billNo)-billNum(b.billNo));
@@ -1752,12 +1760,12 @@ export default function App() {
           {/* Filters */}
           <Card style={{marginBottom:12,padding:"10px 14px"}}>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-              {["all","today","yesterday","custom","unpaid"].map(f=>(
+              {["all","today","yesterday","custom","unpaid","delivery"].map(f=>(
                 <button key={f} onClick={()=>setBillFilter(f)}
-                  style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${billFilter===f?(f==="unpaid"?C.danger:C.accent):C.border}`,
-                  background:billFilter===f?(f==="unpaid"?C.danger:C.accent):"transparent",
-                  color:billFilter===f?"#fff":(f==="unpaid"?C.danger:C.muted),fontWeight:600,fontSize:12,cursor:"pointer"}}>
-                  {f==="all"?"All":f==="today"?"Today":f==="yesterday"?"Yesterday":f==="custom"?"Custom":"🔴 Unpaid"}
+                  style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${billFilter===f?(f==="unpaid"?C.danger:f==="delivery"?"#1a56db":C.accent):C.border}`,
+                  background:billFilter===f?(f==="unpaid"?C.danger:f==="delivery"?"#1a56db":C.accent):"transparent",
+                  color:billFilter===f?"#fff":(f==="unpaid"?C.danger:f==="delivery"?"#1a56db":C.muted),fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                  {f==="all"?"All":f==="today"?"Today":f==="yesterday"?"Yesterday":f==="custom"?"Custom":f==="unpaid"?"🔴 Unpaid":"🛵 Delivery"}
                 </button>
               ))}
               <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
@@ -1795,7 +1803,10 @@ export default function App() {
                 <tbody>
                   {filtered.map(b=>(
                     <tr key={b.id||b.billNo} style={{borderBottom:`1px solid ${C.border}33`}}>
-                      <td style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.accent,whiteSpace:"nowrap"}}>{b.billNo}</td>
+                      <td style={{padding:"9px 12px",fontWeight:700,fontSize:13,color:C.accent,whiteSpace:"nowrap"}}>
+                        {b.billNo}
+                        {b.isDelivery && <span style={{marginLeft:5,fontSize:10,background:"#e8f0fe",color:"#1a56db",borderRadius:6,padding:"1px 5px",fontWeight:700}}>🛵</span>}
+                      </td>
                       <td style={{padding:"9px 12px",fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>{b.date} {b.time}</td>
                       <td style={{padding:"9px 12px",fontSize:13}}>T{b.table}</td>
                       <td style={{padding:"9px 12px",fontSize:13}}>{b.custName||"—"}</td>
