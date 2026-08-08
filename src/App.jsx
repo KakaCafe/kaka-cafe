@@ -2493,10 +2493,8 @@ export default function App() {
                             `TEL;TYPE=CELL:+91${c.phone}`,
                             `NOTE:Kaka Cafe customer. Visits: ${c.visits||1}. First visit: ${c.firstVisit||""}`,
                             "END:VCARD"
-                          ].join("
-");
-                        }).join("
-");
+                          ].join("\n");
+                        }).join("\n");
                         const blob=new Blob([vcf],{type:"text/vcard"});
                         const a=document.createElement("a");
                         a.href=URL.createObjectURL(blob);
