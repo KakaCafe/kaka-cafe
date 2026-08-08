@@ -953,7 +953,7 @@ export default function App() {
     }
     const bill={
       id:Date.now(),billNo:bn,table:selTable,
-      items:cart.map(i=>({name:i.name,price:i.price,qty:i.qty})),
+      items:cart.map(i=>({name:i.name,price:i.price,qty:i.qty,...(i.comment?{comment:i.comment}:{})})),
       subtotal:sub,gst,packaging,total,
       paymentMode:mode,
       cashAmt:mode==="Mix"?Number(mixPay.cash)||0:0,
@@ -1083,7 +1083,7 @@ export default function App() {
     const sep="━━━━━━━━━━━━━━━━━━━━";
     const isCash=bill.paymentMode==="Cash";
     const isUPI=bill.paymentMode==="UPI"||(bill.paymentMode==="Mix"&&(bill.upiAmt||0)>0);
-    const itemLines=bill.items.map(i=>"  • "+i.name+" — "+fmt(i.price*i.qty)).join("\n");
+    const itemLines=bill.items.map(i=>"  • "+i.name+" — "+fmt(i.price*i.qty)+(i.comment?" _("+i.comment+")_":"")).join("\n");
     const gstLine=bill.gst?"\nGST (5%): "+fmt(bill.gst):"";
     const packLine=bill.packaging?"\nPackaging: "+fmt(bill.packaging):"";
     const payStr=bill.paymentMode==="Mix"?"Mix (Cash "+fmt(bill.cashAmt||0)+" + UPI "+fmt(bill.upiAmt||0)+")":bill.paymentMode;
@@ -1315,14 +1315,16 @@ export default function App() {
                 const todayISODesk=new Date().toISOString().slice(0,10);
                 return (
                   <>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                    <label style={{fontSize:11,color:C.muted,fontWeight:700,whiteSpace:"nowrap"}}>📅 Bill Date</label>
-                    <input type="date" value={billDate} max={todayISODesk} onChange={e=>setBillDate(e.target.value||todayISODesk)} style={{fontSize:12,padding:"5px 8px",flex:"0 0 auto"}}/>
+                  <div style={{marginBottom:8}}>
+                    <label style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>📅 Bill Date</label>
+                    <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4}}>
+                      <input type="date" value={billDate} max={todayISODesk} onChange={e=>setBillDate(e.target.value||todayISODesk)} style={{flex:1,minWidth:0,fontSize:12,padding:"7px 10px"}}/>
+                      {billDate!==todayISODesk && (
+                        <button onClick={()=>setBillDate(todayISODesk)} style={{flexShrink:0,fontSize:11,fontWeight:700,color:C.accent,background:"none",border:`1px solid ${C.accent}`,borderRadius:8,padding:"6px 10px",cursor:"pointer"}}>Today</button>
+                      )}
+                    </div>
                     {billDate!==todayISODesk && (
-                      <>
-                        <span style={{fontSize:11,fontWeight:700,color:"#8a6100"}}>Back-dated</span>
-                        <button onClick={()=>setBillDate(todayISODesk)} style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:C.accent,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Reset to today</button>
-                      </>
+                      <div style={{fontSize:11,fontWeight:700,color:"#8a6100",marginTop:4}}>⚠ Back-dating this bill</div>
                     )}
                   </div>
                   <div style={{marginBottom:10}}>
@@ -1373,16 +1375,32 @@ export default function App() {
               ) : (
                 <>
                   {cart.map(item=>(
-                    <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${C.border}22`}}>
-                      <div style={{fontSize:12,flex:1,lineHeight:1.3}}>{item.name}</div>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <button onClick={()=>setCart(c=>{const ex=c.find(x=>x.id===item.id);if(!ex)return c;if(ex.qty===1)return c.filter(x=>x.id!==item.id);return c.map(x=>x.id===item.id?{...x,qty:x.qty-1}:x);})}
-                          style={{width:22,height:22,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.surface,cursor:"pointer",fontWeight:800}}>−</button>
-                        <span style={{fontSize:13,fontWeight:700,minWidth:16,textAlign:"center"}}>{item.qty}</span>
-                        <button onClick={()=>addToCart(item)}
-                          style={{width:22,height:22,borderRadius:"50%",border:"none",background:C.accent,color:"#fff",cursor:"pointer",fontWeight:800}}>+</button>
-                        <span style={{fontSize:12,fontWeight:700,color:C.accent,minWidth:44,textAlign:"right"}}>{fmt(item.price*item.qty)}</span>
+                    <div key={item.id} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}22`}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{fontSize:12,flex:1,lineHeight:1.3}}>{item.name}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <button onClick={()=>setCart(c=>{const ex=c.find(x=>x.id===item.id);if(!ex)return c;if(ex.qty===1)return c.filter(x=>x.id!==item.id);return c.map(x=>x.id===item.id?{...x,qty:x.qty-1}:x);})}
+                            style={{width:22,height:22,borderRadius:"50%",border:`1px solid ${C.border}`,background:C.surface,cursor:"pointer",fontWeight:800}}>−</button>
+                          <span style={{fontSize:13,fontWeight:700,minWidth:16,textAlign:"center"}}>{item.qty}</span>
+                          <button onClick={()=>addToCart(item)}
+                            style={{width:22,height:22,borderRadius:"50%",border:"none",background:C.accent,color:"#fff",cursor:"pointer",fontWeight:800}}>+</button>
+                          <span style={{fontSize:12,fontWeight:700,color:C.accent,minWidth:44,textAlign:"right"}}>{fmt(item.price*item.qty)}</span>
+                        </div>
                       </div>
+                      {item.comment ? (
+                        <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}>
+                          <span style={{fontSize:11,color:C.muted,fontStyle:"italic",flex:1}}>📝 {item.comment}</span>
+                          <button onClick={()=>setCart(c=>c.map(x=>x.id===item.id?{...x,comment:""}:x))}
+                            style={{fontSize:10,color:C.danger,background:"none",border:"none",cursor:"pointer",padding:"0 2px"}}>✕</button>
+                        </div>
+                      ) : (
+                        <button onClick={()=>{
+                          const txt=window.prompt("Add note for "+item.name+" (e.g. less spicy, no onion):");
+                          if(txt!==null) setCart(c=>c.map(x=>x.id===item.id?{...x,comment:txt.trim()}:x));
+                        }} style={{fontSize:10,color:C.muted,background:"none",border:`1px dashed ${C.border}`,borderRadius:4,cursor:"pointer",padding:"1px 6px",marginTop:3,display:"block"}}>
+                          + add note
+                        </button>
+                      )}
                     </div>
                   ))}
                   <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
@@ -1439,7 +1457,7 @@ export default function App() {
                     {cart.length>0 && (
                       <Btn full v="dark" size="sm" style={{marginBottom:6}} onClick={()=>{
                         // Kitchen order: items + qty + table only, no prices
-                        const lines=cart.map(i=>i.name+" x"+i.qty).join("\n");
+                        const lines=cart.map(i=>i.name+" x"+i.qty+(i.comment?" ["+i.comment+"]":"")).join("\n");
                         const msg="*KOT - Table "+selTable+"*\n"+lines+"\n\n_"+nowStr()+"_";
                         // Opens WhatsApp — user picks kitchen group (can't auto-select group)
                         const url="https://wa.me/?text="+encodeURIComponent(msg);
@@ -1500,16 +1518,32 @@ export default function App() {
             ) : (
               <>
                 {cart.map(item=>(
-                  <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #d6ccb844"}}>
-                    <div style={{fontSize:12,flex:1}}>{item.name}</div>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <button onClick={()=>setCart(c=>{const ex=c.find(x=>x.id===item.id);if(!ex)return c;if(ex.qty===1)return c.filter(x=>x.id!==item.id);return c.map(x=>x.id===item.id?{...x,qty:x.qty-1}:x);})}
-                        style={{width:22,height:22,borderRadius:"50%",border:"1px solid #d6ccb8",background:"#ede7d9",cursor:"pointer",fontWeight:800}}>−</button>
-                      <span style={{fontSize:13,fontWeight:700,minWidth:16,textAlign:"center"}}>{item.qty}</span>
-                      <button onClick={()=>addToCart(item)}
-                        style={{width:22,height:22,borderRadius:"50%",border:"none",background:"#b85c00",color:"#fff",cursor:"pointer",fontWeight:800}}>+</button>
-                      <span style={{fontSize:12,fontWeight:700,color:"#b85c00",minWidth:44,textAlign:"right"}}>{fmt(item.price*item.qty)}</span>
+                  <div key={item.id} style={{padding:"6px 0",borderBottom:"1px solid #d6ccb844"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{fontSize:12,flex:1}}>{item.name}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <button onClick={()=>setCart(c=>{const ex=c.find(x=>x.id===item.id);if(!ex)return c;if(ex.qty===1)return c.filter(x=>x.id!==item.id);return c.map(x=>x.id===item.id?{...x,qty:x.qty-1}:x);})}
+                          style={{width:22,height:22,borderRadius:"50%",border:"1px solid #d6ccb8",background:"#ede7d9",cursor:"pointer",fontWeight:800}}>−</button>
+                        <span style={{fontSize:13,fontWeight:700,minWidth:16,textAlign:"center"}}>{item.qty}</span>
+                        <button onClick={()=>addToCart(item)}
+                          style={{width:22,height:22,borderRadius:"50%",border:"none",background:"#b85c00",color:"#fff",cursor:"pointer",fontWeight:800}}>+</button>
+                        <span style={{fontSize:12,fontWeight:700,color:"#b85c00",minWidth:44,textAlign:"right"}}>{fmt(item.price*item.qty)}</span>
+                      </div>
                     </div>
+                    {item.comment ? (
+                      <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}>
+                        <span style={{fontSize:11,color:"#7a6a50",fontStyle:"italic",flex:1}}>📝 {item.comment}</span>
+                        <button onClick={()=>setCart(c=>c.map(x=>x.id===item.id?{...x,comment:""}:x))}
+                          style={{fontSize:10,color:"#c0392b",background:"none",border:"none",cursor:"pointer",padding:"0 2px"}}>✕</button>
+                      </div>
+                    ) : (
+                      <button onClick={()=>{
+                        const txt=window.prompt("Add note for "+item.name+" (e.g. less spicy, no onion):");
+                        if(txt!==null) setCart(c=>c.map(x=>x.id===item.id?{...x,comment:txt.trim()}:x));
+                      }} style={{fontSize:10,color:"#7a6a50",background:"none",border:"1px dashed #d6ccb8",borderRadius:4,cursor:"pointer",padding:"1px 6px",marginTop:3,display:"block"}}>
+                        + add note
+                      </button>
+                    )}
                   </div>
                 ))}
                 <div style={{marginBottom:6}}>
@@ -1537,11 +1571,16 @@ export default function App() {
                 {(()=>{
                   const todayISOMob=new Date().toISOString().slice(0,10);
                   return (
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                      <label style={{fontSize:11,color:"#7a6a50",fontWeight:700,whiteSpace:"nowrap"}}>📅 Date</label>
-                      <input type="date" value={billDate} max={todayISOMob} onChange={e=>setBillDate(e.target.value||todayISOMob)} style={{fontSize:12,padding:"5px 8px",flex:"0 0 auto"}}/>
+                    <div style={{marginBottom:8}}>
+                      <label style={{fontSize:11,color:"#7a6a50",fontWeight:700,textTransform:"uppercase"}}>📅 Bill Date</label>
+                      <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4}}>
+                        <input type="date" value={billDate} max={todayISOMob} onChange={e=>setBillDate(e.target.value||todayISOMob)} style={{flex:1,minWidth:0,fontSize:12,padding:"7px 10px"}}/>
+                        {billDate!==todayISOMob && (
+                          <button onClick={()=>setBillDate(todayISOMob)} style={{flexShrink:0,fontSize:11,fontWeight:700,color:"#b85c00",background:"none",border:"1px solid #b85c00",borderRadius:8,padding:"6px 10px",cursor:"pointer"}}>Today</button>
+                        )}
+                      </div>
                       {billDate!==todayISOMob && (
-                        <button onClick={()=>setBillDate(todayISOMob)} style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:"#b85c00",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Today</button>
+                        <div style={{fontSize:11,fontWeight:700,color:"#8a6100",marginTop:4}}>⚠ Back-dating this bill</div>
                       )}
                     </div>
                   );
@@ -2658,9 +2697,12 @@ export default function App() {
               {printBill.custName && <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span>Customer:</span><span>{printBill.custName}</span></div>}
             </div>
             {printBill.items.map((item,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:12}}>
-                <span>{item.name} × {item.qty}</span>
-                <span>{fmt(item.price*item.qty)}</span>
+              <div key={i} style={{padding:"3px 0"}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                  <span>{item.name} × {item.qty}</span>
+                  <span>{fmt(item.price*item.qty)}</span>
+                </div>
+                {item.comment && <div style={{fontSize:10,fontStyle:"italic",color:"#555"}}>note: {item.comment}</div>}
               </div>
             ))}
             <div style={{borderTop:"1px dashed #999",marginTop:8,paddingTop:8}}>
