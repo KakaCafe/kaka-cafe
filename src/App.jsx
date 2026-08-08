@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 const FB = "https://kaka-cafe-pos-default-rtdb.asia-southeast1.firebasedatabase.app";
-const FB_BASE = `${FB}/kaka-main`;
+const FB_BASE = `${FB}/cafes/kaka-main`;
 
 // Write (PUT) — returns promise
 const fbSet = (path, data) =>
@@ -353,7 +353,7 @@ function StaffGate({onUnlock}) {
   useEffect(()=>{
     // Already unlocked this session (page refresh) — skip PIN
     if(sessionStorage.getItem("kaka_unlocked")==="1"){ onUnlock(); return; }
-    fetch(`${FB}/kaka-main/settings/staffPin.json`)
+    fetch(`${FB}/cafes/kaka-main/settings/staffPin.json`)
       .then(r=>r.json())
       .then(v=>{ if(v && typeof v==="string" && v.length===4) setCorrectPin(v); })
       .catch(()=>{});
@@ -513,7 +513,7 @@ function CustomerView({tableId}) {
     setSubmitting(true);
     try{
       const order={tableId,items:cart,note,time:new Date().toLocaleTimeString(),id:Date.now(),custName:custName.trim(),custPhone,_ts:Date.now()};
-      const r=await fetch(`${FB}/kaka-main/qrOrders.json`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(order)});
+      const r=await fetch(`${FB}/cafes/kaka-main/qrOrders.json`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(order)});
       if(!r.ok) throw new Error("Failed");
       setDone(true);
     } catch(e){alert("Could not place order. Please call staff.");} finally{setSubmitting(false);}
@@ -850,7 +850,7 @@ export default function App() {
     // Ping Firebase
     const ping=async()=>{
       try{
-        const r=await fetch(`${FB}/kaka-main/settings.json`,{signal:AbortSignal.timeout(4000)});
+        const r=await fetch(`${FB}/cafes/kaka-main/settings.json`,{signal:AbortSignal.timeout(4000)});
         setServerOk(r.ok);
       }catch(e){setServerOk(false);}
     };
@@ -867,7 +867,7 @@ export default function App() {
   useEffect(()=>{
     const check = async () => {
       try {
-        const r = await fetch(`${FB}/kaka-main/qrOrders.json`);
+        const r = await fetch(`${FB}/cafes/kaka-main/qrOrders.json`);
         if(!r.ok) return;
         const data = await r.json();
         if(!data){ setQrOrders([]); return; }
@@ -2204,7 +2204,7 @@ export default function App() {
                               <td style={{padding:"9px 12px"}}>
                                 <Btn size="sm" v="danger" onClick={()=>{
                                   if(!window.confirm("Delete this expense?")) return;
-                                  if(e._key) fetch(`${FB}/kaka-main/expenses/${e._key}.json`,{method:"DELETE"});
+                                  if(e._key) fetch(`${FB}/cafes/kaka-main/expenses/${e._key}.json`,{method:"DELETE"});
                                   setExpenses(prev=>prev.filter(x=>x._key!==e._key));
                                 }}>✕</Btn>
                               </td>
@@ -2497,7 +2497,7 @@ export default function App() {
               {editCust.phone && <Btn v="danger" onClick={()=>{
                 if(!confirm("Delete this customer?")) return;
                 const key="c"+editCust.phone;
-                fetch(`${FB}/kaka-main/customers/${key}.json`,{method:"DELETE"});
+                fetch(`${FB}/cafes/kaka-main/customers/${key}.json`,{method:"DELETE"});
                 setCustomers(prev=>prev.filter(c=>c.phone!==editCust.phone));
                 setEditCust(null);notify("Deleted","warn");
               }}>Delete</Btn>}
@@ -2555,9 +2555,9 @@ export default function App() {
                   </div>
                   <Btn v="danger" onClick={()=>{
                     if(!confirm("Clear ALL data? Bills, tables, QR orders will be permanently deleted.")) return;
-                    fetch(`${FB}/kaka-main/bills.json`,{method:"DELETE"});
-                    fetch(`${FB}/kaka-main/tables.json`,{method:"DELETE"});
-                    fetch(`${FB}/kaka-main/qrOrders.json`,{method:"DELETE"});
+                    fetch(`${FB}/cafes/kaka-main/bills.json`,{method:"DELETE"});
+                    fetch(`${FB}/cafes/kaka-main/tables.json`,{method:"DELETE"});
+                    fetch(`${FB}/cafes/kaka-main/qrOrders.json`,{method:"DELETE"});
                     setBills([]);setTables(Array.from({length:TABLE_COUNT},(_,i)=>({id:i+1,status:"free",order:[]})));setQrOrders([]);
                     notify("Database cleared","warn");setModal(null);
                   }}>🗑 Clear All Data</Btn>
