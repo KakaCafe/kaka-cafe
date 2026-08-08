@@ -668,6 +668,8 @@ export default function App() {
   const [billSort,setBillSort]=useState("newest"); // newest | oldest | highest | lowest
   const [editBill,setEditBill]=useState(null); // {id, items, paymentMode, custName, ...}
   const [editBillOpen,setEditBillOpen]=useState(false);
+  const [contactsResult,setContactsResult]=useState(null); // parsed contacts sync result
+  const [contactsLoading,setContactsLoading]=useState(false);
   const [modal,setModal]=useState(null);
   const [mdata,setMdata]=useState(null);
   const [rRange,setRRange]=useState("today");
@@ -1138,6 +1140,7 @@ export default function App() {
     {id:"qr",l:`📱 QR${qrOrders.length?` 🔴${qrOrders.length}`:""}` },
     {id:"customers",l:`👥 Customers${customers.length?` (${customers.length})`:""}`},
     {id:"log",l:"📋 Log"},
+    {id:"contacts",l:"📇 Contacts"},
   ];
 
     // ── Render ────────────────────────────────────────────────────────────────
@@ -2331,6 +2334,226 @@ export default function App() {
               }}>📲 Send WhatsApp Confirmation</Btn>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ════ CONTACTS SYNC ════ */}
+      {tab==="contacts" && (
+        <div className="fade-up">
+          <div style={{fontFamily:"Playfair Display",fontSize:20,marginBottom:4}}>📇 Contacts Sync</div>
+          <div style={{fontSize:13,color:C.muted,marginBottom:16}}>
+            Upload your OnePlus contacts export (VCF or CSV). We'll compare with your {customers.length} Kaka Cafe customers
+            and generate a VCF file with new contacts to import back to your phone.
+          </div>
+
+          {/* Upload area */}
+          <Card style={{marginBottom:16,padding:20,textAlign:"center",border:`2px dashed ${C.border}`}}>
+            <div style={{fontSize:32,marginBottom:8}}>📤</div>
+            <div style={{fontWeight:700,marginBottom:4}}>Upload Phone Contacts Export</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:16}}>Supports .vcf (vCard) and .csv files from OnePlus / Google Contacts</div>
+            <input type="file" accept=".vcf,.csv,.xlsx,.xls" style={{display:"none"}} id="contacts-upload"
+              onChange={async e=>{
+                const file=e.target.files[0];
+                if(!file){return;}
+                setContactsLoading(true);
+                setContactsResult(null);
+                try {
+                  const text=await file.text();
+                  const ext=file.name.split(".").pop().toLowerCase();
+
+                  // Parse phone contacts from file
+                  let phoneContacts=[]; // [{name, phone}]
+
+                  if(ext==="vcf"){
+                    // Parse VCF / vCard format
+                    const cards=text.split("BEGIN:VCARD");
+                    cards.forEach(card=>{
+                      if(!card.trim()) return;
+                      // Extract name
+                      const fnMatch=card.match(/FN[^:]*:(.+)/);
+                      const nMatch=card.match(/N[^:]*:(.+)/);
+                      let name=(fnMatch?.[1]||"").trim();
+                      if(!name && nMatch){
+                        const parts=nMatch[1].split(";").filter(Boolean);
+                        name=[parts[1],parts[0]].filter(Boolean).join(" ").trim();
+                      }
+                      // Extract all phone numbers
+                      const telMatches=[...card.matchAll(/TEL[^:]*:(.+)/g)];
+                      telMatches.forEach(m=>{
+                        const raw=m[1].replace(/[^0-9+]/g,"").trim();
+                        // Normalize to 10 digits (Indian numbers)
+                        let phone=raw;
+                        if(phone.startsWith("+91")) phone=phone.slice(3);
+                        if(phone.startsWith("91")&&phone.length===12) phone=phone.slice(2);
+                        if(phone.length===10) phoneContacts.push({name:name||"Unknown",phone});
+                      });
+                    });
+                  } else if(ext==="csv"){
+                    // Parse CSV — handle Google Contacts / OnePlus CSV export
+                    const lines=text.split("
+").filter(Boolean);
+                    const headers=lines[0].split(",").map(h=>h.replace(/"/g,"").trim().toLowerCase());
+                    const nameIdx=headers.findIndex(h=>h.includes("name")||h==="first name"||h==="given name");
+                    const phoneIdx=headers.findIndex(h=>h.includes("phone")||h.includes("mobile")||h.includes("tel"));
+                    lines.slice(1).forEach(line=>{
+                      // Handle quoted CSV
+                      const cols=[]; let cur="",inQ=false;
+                      for(const ch of line){ if(ch==='"'){inQ=!inQ;}else if(ch===","&&!inQ){cols.push(cur);cur="";}else cur+=ch; }
+                      cols.push(cur);
+                      const name=(cols[nameIdx]||"").replace(/"/g,"").trim();
+                      const raw=(cols[phoneIdx]||"").replace(/[^0-9+]/g,"").trim();
+                      let phone=raw;
+                      if(phone.startsWith("+91")) phone=phone.slice(3);
+                      if(phone.startsWith("91")&&phone.length===12) phone=phone.slice(2);
+                      if(phone.length===10) phoneContacts.push({name,phone});
+                    });
+                  }
+
+                  // Build set of phone numbers already in phone contacts
+                  const phoneNums=new Set(phoneContacts.map(c=>c.phone));
+                  // Build set of Kaka Cafe customer phones
+                  const cafeNums=new Set(customers.map(c=>c.phone));
+
+                  // New Kaka Cafe customers NOT in phone contacts
+                  const newToPhone=customers.filter(c=>c.phone&&!phoneNums.has(c.phone));
+                  // Phone contacts not in Kaka Cafe (just for info)
+                  const notInCafe=phoneContacts.filter(c=>!cafeNums.has(c.phone));
+
+                  setContactsResult({
+                    totalPhone:phoneContacts.length,
+                    totalCafe:customers.length,
+                    newToPhone,   // cafe customers missing from phone
+                    notInCafe,    // phone contacts not in cafe system
+                    fileName:file.name,
+                  });
+                } catch(err){
+                  setContactsResult({error:"Could not parse file: "+err.message});
+                }
+                setContactsLoading(false);
+                e.target.value=""; // reset input
+              }}/>
+            <label htmlFor="contacts-upload" style={{display:"inline-block",padding:"10px 28px",
+              background:C.accent,color:"#fff",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14}}>
+              Choose File
+            </label>
+            <div style={{fontSize:11,color:C.muted,marginTop:8}}>
+              On OnePlus: Contacts app → Menu → Import/Export → Export to storage → .vcf file
+            </div>
+          </Card>
+
+          {contactsLoading && (
+            <Card style={{textAlign:"center",padding:32,color:C.muted}}>
+              <div style={{fontSize:24,marginBottom:8}}>⏳</div>
+              Parsing contacts...
+            </Card>
+          )}
+
+          {contactsResult?.error && (
+            <Card style={{padding:16,background:C.danger+"11",border:`1px solid ${C.danger}33`,color:C.danger}}>
+              ❌ {contactsResult.error}
+            </Card>
+          )}
+
+          {contactsResult && !contactsResult.error && (()=>{
+            const {totalPhone,totalCafe,newToPhone,notInCafe,fileName}=contactsResult;
+            return (
+              <>
+                {/* Summary cards */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:16}}>
+                  {[
+                    {l:"📱 Phone Contacts",v:totalPhone,c:C.info},
+                    {l:"☕ Cafe Customers",v:totalCafe,c:C.accent},
+                    {l:"✨ New to Add",v:newToPhone.length,c:C.success},
+                  ].map(({l,v,c})=>(
+                    <Card key={l} style={{textAlign:"center",padding:14,border:`1px solid ${c}33`}}>
+                      <div style={{fontSize:22,fontWeight:900,color:c}}>{v}</div>
+                      <div style={{fontSize:11,color:C.muted,fontWeight:600}}>{l}</div>
+                    </Card>
+                  ))}
+                </div>
+
+                {newToPhone.length===0 ? (
+                  <Card style={{textAlign:"center",padding:32,color:C.success}}>
+                    <div style={{fontSize:28,marginBottom:8}}>✅</div>
+                    <div style={{fontWeight:700}}>All cafe customers are already in your phone!</div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:4}}>Nothing new to add.</div>
+                  </Card>
+                ) : (
+                  <Card style={{marginBottom:16}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                      <div style={{fontWeight:700,fontSize:15}}>✨ {newToPhone.length} new customer{newToPhone.length!==1?"s":""} to add to phone</div>
+                      <Btn v="success" onClick={()=>{
+                        // Generate VCF file for import
+                        const vcf=newToPhone.map(c=>{
+                          const name=c.name||("Kaka Customer "+c.phone);
+                          return [
+                            "BEGIN:VCARD",
+                            "VERSION:3.0",
+                            `FN:${name}`,
+                            `N:${name};;;`,
+                            `TEL;TYPE=CELL:+91${c.phone}`,
+                            `NOTE:Kaka Cafe customer. Visits: ${c.visits||1}. First visit: ${c.firstVisit||""}`,
+                            "END:VCARD"
+                          ].join("
+");
+                        }).join("
+");
+                        const blob=new Blob([vcf],{type:"text/vcard"});
+                        const a=document.createElement("a");
+                        a.href=URL.createObjectURL(blob);
+                        a.download=`kaka-new-contacts-${new Date().toLocaleDateString("en-IN").replace(/\//g,"-")}.vcf`;
+                        a.click();
+                        notify("VCF downloaded — import to your phone contacts!");
+                      }}>📥 Download VCF to Import</Btn>
+                    </div>
+                    <div style={{maxHeight:320,overflowY:"auto"}}>
+                      {newToPhone.map((c,i)=>(
+                        <div key={c.phone} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                          padding:"8px 0",borderBottom:`1px solid ${C.border}33`,fontSize:13}}>
+                          <div>
+                            <span style={{fontWeight:700}}>{c.name||"—"}</span>
+                            <span style={{color:C.muted,marginLeft:8}}>+91 {c.phone}</span>
+                          </div>
+                          <div style={{fontSize:11,color:C.muted}}>
+                            {c.visits||1} visit{(c.visits||1)!==1?"s":""} · last {c.lastVisit||""}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {notInCafe.length>0 && (
+                  <Card style={{marginBottom:16}}>
+                    <div style={{fontWeight:700,marginBottom:8,fontSize:14,color:C.muted}}>
+                      📵 {notInCafe.length} phone contacts not in Kaka Cafe system
+                    </div>
+                    <div style={{fontSize:12,color:C.muted}}>
+                      These are in your phone but never ordered at Kaka Cafe (or ordered without giving phone number).
+                    </div>
+                  </Card>
+                )}
+
+                <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>
+                  Analysed from: {fileName}
+                </div>
+              </>
+            );
+          })()}
+
+          {!contactsResult && !contactsLoading && (
+            <Card style={{padding:20}}>
+              <div style={{fontWeight:700,marginBottom:10,fontSize:14}}>📖 How to use:</div>
+              <div style={{fontSize:13,color:C.text,lineHeight:1.8}}>
+                <div>1. On your OnePlus: open <strong>Contacts</strong> app</div>
+                <div>2. Tap <strong>Menu (⋮)</strong> → <strong>Manage contacts</strong> → <strong>Export contacts</strong></div>
+                <div>3. Save the <strong>.vcf file</strong> to your phone storage</div>
+                <div>4. Transfer to your PC and upload here</div>
+                <div>5. Download the generated VCF with new customers</div>
+                <div>6. Transfer back to phone → open file → tap <strong>Import</strong></div>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 
