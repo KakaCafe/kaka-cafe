@@ -758,9 +758,16 @@ export default function App() {
     const isValidFbData = (d) => d && typeof d==="object" && !Array.isArray(d) && !d.error;
 
     const processBills = (data) => {
-      if(!isValidFbData(data)) return;
+      if(!isValidFbData(data)) {
+        // Firebase blocked — load from localStorage cache
+        try {
+          const cached = localStorage.getItem("kaka_bills_cache");
+          if(cached) { setBills(JSON.parse(cached)); }
+        } catch(e) {}
+        return;
+      }
       const arr=Object.entries(data)
-        .filter(([k,v])=>v && typeof v==="object" && v.billNo) // only real bill objects
+        .filter(([k,v])=>v && typeof v==="object" && v.billNo)
         .map(([k,v])=>({...v,_fbKey:k}))
         .sort((a,b)=>{
           const na=parseInt(String(a.billNo).replace(/\D/g,"")||0);
@@ -768,7 +775,11 @@ export default function App() {
           return nb-na;
         });
       setBills(arr);
-      if(arr.length) setBillN(Math.max(...arr.map(b=>parseInt(String(b.billNo).replace(/\D/g,"")||1001)))+1);
+      if(arr.length) {
+        setBillN(Math.max(...arr.map(b=>parseInt(String(b.billNo).replace(/\D/g,"")||1001)))+1);
+        // Cache to localStorage for offline fallback
+        try { localStorage.setItem("kaka_bills_cache", JSON.stringify(arr)); } catch(e) {}
+      }
     };
 
     const processMenu = (data) => {
@@ -948,7 +959,12 @@ export default function App() {
     const billFbKey = await fbPush("bills",bill);
     if(billFbKey) {
       bill._fbKey = billFbKey;
-      setBills(prev=>prev.map(b=>b.id===bill.id?{...b,_fbKey:billFbKey}:b));
+      setBills(prev=>{
+        const updated=prev.map(b=>b.id===bill.id?{...b,_fbKey:billFbKey}:b);
+        // Keep localStorage cache in sync
+        try { localStorage.setItem("kaka_bills_cache", JSON.stringify(updated)); } catch(e) {}
+        return updated;
+      });
     }
     // ── Auto-save bill to localStorage CSV (silent, no clicks needed) ──
     try{
@@ -1722,10 +1738,11 @@ export default function App() {
         else if(billFilter==="custom") filtered=bills.filter(b=>{const d=toISO2(b.date);return d>=billDateFrom&&d<=billDateTo;});
         else if(billFilter==="unpaid") filtered=bills.filter(b=>b.paymentStatus==="unpaid");
         // Sort
-        if(billSort==="oldest") filtered.sort((a,b)=>a.billNo?.localeCompare?.(b.billNo)||0);
-        else if(billSort==="newest") filtered.sort((a,b)=>b.billNo?.localeCompare?.(a.billNo)||0);
-        else if(billSort==="highest") filtered.sort((a,b)=>b.total-a.total);
-        else if(billSort==="lowest") filtered.sort((a,b)=>a.total-b.total);
+        const billNum = bn => parseInt(String(bn||"0").replace(/\D/g,""))||0;
+        if(billSort==="oldest") filtered.sort((a,b)=>billNum(a.billNo)-billNum(b.billNo));
+        else if(billSort==="newest") filtered.sort((a,b)=>billNum(b.billNo)-billNum(a.billNo));
+        else if(billSort==="highest") filtered.sort((a,b)=>(b.total||0)-(a.total||0));
+        else if(billSort==="lowest") filtered.sort((a,b)=>(a.total||0)-(b.total||0));
         return (
         <div className="fade-up">
           <div style={{fontFamily:"Playfair Display",fontSize:20,marginBottom:12}}>Bill History ({bills.length})</div>
