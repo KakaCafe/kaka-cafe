@@ -288,6 +288,14 @@ const addLog = (action, detail="") => {
 };
 const nowStr = () => new Date().toLocaleString("en-IN",{hour12:true});
 const todayStr = () => new Date().toLocaleDateString("en-IN");
+// Local-timezone-safe ISO date (yyyy-mm-dd). new Date().toISOString() is UTC, which lags
+// IST by up to 5h30m — during that window it silently returns "yesterday", causing bills
+// saved with today's local date to not match "Today" filters. This always matches the
+// device's local wall-clock date, same as nowStr()/todayStr() above.
+const localISO = (d=new Date()) => {
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,"0"), day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+};
 
 const sendWhatsApp = (phone, msg) => {
   const encoded = encodeURIComponent(msg);
@@ -663,8 +671,8 @@ export default function App() {
   const [diagData,setDiagData]=useState(null); // raw Firebase diagnostic
   const [printBill,setPrintBill]=useState(null);
   const [billFilter,setBillFilter]=useState("all"); // all | today | yesterday | custom
-  const [billDateFrom,setBillDateFrom]=useState(()=>new Date().toISOString().slice(0,10));
-  const [billDateTo,setBillDateTo]=useState(()=>new Date().toISOString().slice(0,10));
+  const [billDateFrom,setBillDateFrom]=useState(()=>localISO());
+  const [billDateTo,setBillDateTo]=useState(()=>localISO());
   const [billSort,setBillSort]=useState("newest"); // newest | oldest | highest | lowest
   const [editBill,setEditBill]=useState(null); // {id, items, paymentMode, custName, ...}
   const [editBillOpen,setEditBillOpen]=useState(false);
@@ -673,8 +681,8 @@ export default function App() {
   const [modal,setModal]=useState(null);
   const [mdata,setMdata]=useState(null);
   const [rRange,setRRange]=useState("today");
-  const [customFrom,setCustomFrom]=useState(()=>new Date().toISOString().slice(0,10));
-  const [customTo,setCustomTo]=useState(()=>new Date().toISOString().slice(0,10));
+  const [customFrom,setCustomFrom]=useState(()=>localISO());
+  const [customTo,setCustomTo]=useState(()=>localISO());
   const [qrView,setQrView]=useState(null);
   const [newItem,setNewItem]=useState({name:"",cat:"Quick Bites",price:""});
   const [newIng,setNewIng]=useState({name:"",unit:"g",stock:"",low:""});
@@ -686,7 +694,7 @@ export default function App() {
   const [cartDrawerOpen,setCartDrawerOpen]=useState(true); // mobile cart drawer
   const [billCustName,setBillCustName]=useState("");
   const [billCustPhone,setBillCustPhone]=useState("");
-  const [billDate,setBillDate]=useState(()=>new Date().toISOString().slice(0,10)); // yyyy-mm-dd, defaults to today; editable for back-dated bills
+  const [billDate,setBillDate]=useState(()=>localISO()); // yyyy-mm-dd, defaults to today; editable for back-dated bills
   const [mixPay,setMixPay]=useState({cash:"",upi:""});
   const [showMix,setShowMix]=useState(false);
   const [serverOk,setServerOk]=useState(null);
@@ -713,8 +721,8 @@ export default function App() {
   const [expCats,setExpCats]=useState(()=>{try{const s=localStorage.getItem("kaka_exp_cats");return s?JSON.parse(s):["Raw Materials","Salaries","Rent","Utilities","Maintenance","Packaging","Other"];}catch(e){return ["Raw Materials","Salaries","Rent","Utilities","Maintenance","Packaging","Other"];}});
   const [newExp,setNewExp]=useState({cat:"Raw Materials",desc:"",amount:""});
   const [expFilter,setExpFilter]=useState("today");
-  const [expCustomFrom,setExpCustomFrom]=useState(()=>new Date().toISOString().slice(0,10));
-  const [expCustomTo,setExpCustomTo]=useState(()=>new Date().toISOString().slice(0,10));
+  const [expCustomFrom,setExpCustomFrom]=useState(()=>localISO());
+  const [expCustomTo,setExpCustomTo]=useState(()=>localISO());
   const saveExpCats=c=>{setExpCats(c);try{localStorage.setItem("kaka_exp_cats",JSON.stringify(c));}catch(e){}};
 
   const notify=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
@@ -945,7 +953,7 @@ export default function App() {
     const bn=`KC-${billN}`;
     const now=nowStr();
     let [date,time]=now.includes(", ")?now.split(", "):[todayStr(),now];
-    const todayISO=new Date().toISOString().slice(0,10);
+    const todayISO=localISO();
     if(billDate && billDate!==todayISO){
       // Back-dated bill — override date portion only, keep current time (when it was actually entered)
       const [y,m,d]=billDate.split("-");
@@ -1027,7 +1035,7 @@ export default function App() {
       return updated;
     });
     // Reset cart
-    setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(new Date().toISOString().slice(0,10));setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
+    setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(localISO());setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
     setPrintBill(bill);
     notify("Bill "+bn+" generated!"); addLog("BILL_GENERATED", bn+" T"+selTable+" "+fmt(total)+" "+mode);
     // WhatsApp button is in the print modal — no popup needed
@@ -1119,14 +1127,14 @@ export default function App() {
     if(parts.length===3) return `${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
     return dateStr;
   };
-  const todayISO=new Date().toISOString().slice(0,10);
-  const yesterdayISO=new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const todayISO=localISO();
+  const yesterdayISO=localISO(new Date(Date.now()-86400000));
   const fBills=bills.filter(b=>{
     const d=toISO(b.date);
     if(rRange==="today") return d===todayISO;
     if(rRange==="yesterday") return d===yesterdayISO;
-    if(rRange==="week"){const w=new Date(Date.now()-7*86400000).toISOString().slice(0,10);return d>=w&&d<=todayISO;}
-    if(rRange==="month"){const m=new Date(Date.now()-30*86400000).toISOString().slice(0,10);return d>=m&&d<=todayISO;}
+    if(rRange==="week"){const w=localISO(new Date(Date.now()-7*86400000));return d>=w&&d<=todayISO;}
+    if(rRange==="month"){const m=localISO(new Date(Date.now()-30*86400000));return d>=m&&d<=todayISO;}
     if(rRange==="custom") return d>=customFrom&&d<=customTo;
     return true;
   });
@@ -1312,7 +1320,7 @@ export default function App() {
                 // Partial suggestions: show matching customers as you type (tap to fill all 10 digits)
                 const partialMatches=billCustPhone.length>=4&&billCustPhone.length<10
                   ?customers.filter(c=>c.phone.startsWith(billCustPhone)).slice(0,4):[];
-                const todayISODesk=new Date().toISOString().slice(0,10);
+                const todayISODesk=localISO();
                 return (
                   <>
                   <div style={{marginBottom:8}}>
@@ -1467,7 +1475,7 @@ export default function App() {
                     <div style={{display:"flex",gap:6,marginBottom:8}}>
                       <Btn full v="muted" size="sm" onClick={saveOrder}>💾 Save Order</Btn>
                       <Btn v="danger" size="sm" onClick={()=>{if(!cart.length)return;if(window.confirm("Clear all items from cart?")){
-              setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(new Date().toISOString().slice(0,10));setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
+              setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(localISO());setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
               if(selTable){
                 const cleared={id:selTable,status:"free",order:[]};
                 markTableFreed(selTable);
@@ -1569,7 +1577,7 @@ export default function App() {
                   <span>Total</span><span style={{color:"#b85c00"}}>{fmt(grandTotal)}</span>
                 </div>
                 {(()=>{
-                  const todayISOMob=new Date().toISOString().slice(0,10);
+                  const todayISOMob=localISO();
                   return (
                     <div style={{marginBottom:8}}>
                       <label style={{fontSize:11,color:"#7a6a50",fontWeight:700,textTransform:"uppercase"}}>📅 Bill Date</label>
@@ -1811,8 +1819,8 @@ export default function App() {
       {tab==="bills" && (()=>{
         // Filter bills
         const toISO2=d=>{if(!d)return"";const p=d.split("/");if(p.length===3)return`${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`;return d;};
-        const todayISO2=new Date().toISOString().slice(0,10);
-        const yestISO2=new Date(Date.now()-864e5).toISOString().slice(0,10);
+        const todayISO2=localISO();
+        const yestISO2=localISO(new Date(Date.now()-864e5));
         let filtered=[...bills];
         if(billFilter==="today") filtered=bills.filter(b=>toISO2(b.date)===todayISO2);
         else if(billFilter==="yesterday") filtered=bills.filter(b=>toISO2(b.date)===yestISO2);
@@ -1979,8 +1987,8 @@ export default function App() {
                 const d=toISO(e.date);
                 if(rRange==="today") return d===todayISO;
                 if(rRange==="yesterday") return d===yesterdayISO;
-                if(rRange==="week"){const w=new Date(Date.now()-7*86400000).toISOString().slice(0,10);return d>=w&&d<=todayISO;}
-                if(rRange==="month"){const m=new Date(Date.now()-30*86400000).toISOString().slice(0,10);return d>=m&&d<=todayISO;}
+                if(rRange==="week"){const w=localISO(new Date(Date.now()-7*86400000));return d>=w&&d<=todayISO;}
+                if(rRange==="month"){const m=localISO(new Date(Date.now()-30*86400000));return d>=m&&d<=todayISO;}
                 if(rRange==="custom") return d>=customFrom&&d<=customTo;
                 return true;
               });
@@ -2235,8 +2243,8 @@ export default function App() {
                 const d=toISO(e.date);
                 if(expFilter==="today") return d===todayISO;
                 if(expFilter==="yesterday") return d===yesterdayISO;
-                if(expFilter==="week"){const w=new Date(Date.now()-7*86400000).toISOString().slice(0,10);return d>=w&&d<=todayISO;}
-                if(expFilter==="month"){const m=new Date(Date.now()-30*86400000).toISOString().slice(0,10);return d>=m&&d<=todayISO;}
+                if(expFilter==="week"){const w=localISO(new Date(Date.now()-7*86400000));return d>=w&&d<=todayISO;}
+                if(expFilter==="month"){const m=localISO(new Date(Date.now()-30*86400000));return d>=m&&d<=todayISO;}
                 if(expFilter==="custom") return d>=expCustomFrom&&d<=expCustomTo;
                 return true;
               });
@@ -2329,7 +2337,7 @@ export default function App() {
                   const HDR="Name,Phone,Visits,First Visit,Last Visit,Last Table,Note";
                   const rows=customers.map(c=>[c.name,c.phone,c.visits||1,c.firstVisit||"",c.lastVisit||"",c.lastTable||"",c.note||""].map(esc).join(",")).join("\n");
                   const blob=new Blob(["\uFEFF"+HDR+"\n"+rows],{type:"text/csv;charset=utf-8"});
-                  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Kaka-Customers-${new Date().toISOString().slice(0,10)}.csv`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+                  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Kaka-Customers-${localISO()}.csv`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
                   notify("Customers exported ✅");
                 }} style={{background:C.success,color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontWeight:700,fontSize:12,cursor:"pointer"}}>📥 Export CSV</button>
                 <Btn onClick={()=>setEditCust({id:null,name:"",phone:"",note:""})}>+ Add</Btn>
