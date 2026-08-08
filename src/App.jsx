@@ -2390,8 +2390,7 @@ export default function App() {
                     });
                   } else if(ext==="csv"){
                     // Parse CSV — handle Google Contacts / OnePlus CSV export
-                    const lines=text.split("
-").filter(Boolean);
+                    const lines=text.split("\n").filter(Boolean);
                     const headers=lines[0].split(",").map(h=>h.replace(/"/g,"").trim().toLowerCase());
                     const nameIdx=headers.findIndex(h=>h.includes("name")||h==="first name"||h==="given name");
                     const phoneIdx=headers.findIndex(h=>h.includes("phone")||h.includes("mobile")||h.includes("tel"));
