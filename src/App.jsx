@@ -2574,7 +2574,8 @@ export default function App() {
                       <Btn v="success" onClick={()=>{
                         // Generate VCF file for import
                         const vcf=newToPhone.map(c=>{
-                          const name=c.name||("Kaka Customer "+c.phone);
+                          const baseName=c.name||("Kaka Customer "+c.phone);
+                          const name=`${baseName} Cust`;
                           return [
                             "BEGIN:VCARD",
                             "VERSION:3.0",
