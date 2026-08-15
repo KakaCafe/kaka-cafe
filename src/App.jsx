@@ -691,6 +691,8 @@ export default function App() {
   const [applyGST,setApplyGST]=useState(false);
   const [quickItem,setQuickItem]=useState({name:"",price:""});
   const [packaging,setPackaging]=useState(0);
+  const [discountOn,setDiscountOn]=useState(false);
+  const [discountPct,setDiscountPct]=useState(10); // % off the full bill
   const [cartDrawerOpen,setCartDrawerOpen]=useState(true); // mobile cart drawer
   const [billCustName,setBillCustName]=useState("");
   const [billCustPhone,setBillCustPhone]=useState("");
@@ -914,7 +916,7 @@ export default function App() {
   // ── Helpers ───────────────────────────────────────────────────────────────
   const selTbl=(t)=>{
     // Save current table's packaging/GST before switching
-    if(selTable) tableSettings.current[selTable]={packaging, applyGST};
+    if(selTable) tableSettings.current[selTable]={packaging, applyGST, discountOn, discountPct};
     setSelTable(t.id);
     // Load this table's cart — reset billing state for new table
     setCart(t.status==="occupied"&&t.order?.length ? t.order.map(i=>({...i})) : []);
@@ -924,6 +926,8 @@ export default function App() {
     const saved = tableSettings.current[t.id];
     setPackaging(saved?.packaging ?? 0);
     setApplyGST(saved?.applyGST ?? false);
+    setDiscountOn(saved?.discountOn ?? false);
+    setDiscountPct(saved?.discountPct ?? 10);
     setShowMix(false);
     setMixPay({cash:"",upi:""});
   };
@@ -949,7 +953,10 @@ export default function App() {
     if(!cart.length){notify("Cart is empty","danger");return;}
     const sub=cart.reduce((s,i)=>s+i.price*i.qty,0);
     const gst=applyGST?Math.round(sub*0.05):0;
-    const total=sub+gst+packaging;
+    const preDiscTotal=sub+gst+packaging;
+    const discountPercent=discountOn?(Number(discountPct)||0):0;
+    const discountAmt=discountOn?Math.round(preDiscTotal*discountPercent/100):0;
+    const total=preDiscTotal-discountAmt;
     const bn=`KC-${billN}`;
     const now=nowStr();
     let [date,time]=now.includes(", ")?now.split(", "):[todayStr(),now];
@@ -962,7 +969,7 @@ export default function App() {
     const bill={
       id:Date.now(),billNo:bn,table:selTable,
       items:cart.map(i=>({name:i.name,price:i.price,qty:i.qty,...(i.comment?{comment:i.comment}:{})})),
-      subtotal:sub,gst,packaging,total,
+      subtotal:sub,gst,packaging,discountPercent,discountAmt,total,
       paymentMode:mode,
       cashAmt:mode==="Mix"?Number(mixPay.cash)||0:0,
       upiAmt:mode==="Mix"?Number(mixPay.upi)||0:0,
@@ -1035,7 +1042,7 @@ export default function App() {
       return updated;
     });
     // Reset cart
-    setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(localISO());setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
+    setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(localISO());setPackaging(0);setApplyGST(false);setDiscountOn(false);setDiscountPct(10);setShowMix(false);setMixPay({cash:"",upi:""});
     setPrintBill(bill);
     notify("Bill "+bn+" generated!"); addLog("BILL_GENERATED", bn+" T"+selTable+" "+fmt(total)+" "+mode);
     // WhatsApp button is in the print modal — no popup needed
@@ -1094,6 +1101,7 @@ export default function App() {
     const itemLines=bill.items.map(i=>"  • "+i.name+" — "+fmt(i.price*i.qty)+(i.comment?" _("+i.comment+")_":"")).join("\n");
     const gstLine=bill.gst?"\nGST (5%): "+fmt(bill.gst):"";
     const packLine=bill.packaging?"\nPackaging: "+fmt(bill.packaging):"";
+    const discLine=bill.discountAmt?"\nDiscount ("+bill.discountPercent+"%): -"+fmt(bill.discountAmt):"";
     const payStr=bill.paymentMode==="Mix"?"Mix (Cash "+fmt(bill.cashAmt||0)+" + UPI "+fmt(bill.upiAmt||0)+")":bill.paymentMode;
     // UPI payment link only for UPI/Mix — never show for Cash
     const upiLine=(!isCash&&info.upiId&&isUPI)?"\n💳 Pay via UPI: "+info.upiId+"\nupi://pay?pa="+info.upiId+"&am="+(bill.upiAmt||bill.total)+"&cu=INR":"";
@@ -1108,7 +1116,7 @@ export default function App() {
       sep+"\n"+
       itemLines+"\n"+
       sep+"\n"+
-      "Subtotal: "+fmt(bill.subtotal)+gstLine+packLine+"\n"+
+      "Subtotal: "+fmt(bill.subtotal)+gstLine+packLine+discLine+"\n"+
       "TOTAL: "+fmt(bill.total)+"\n"+
       "Payment: "+payStr+
       upiLine+"\n"+
@@ -1143,7 +1151,9 @@ export default function App() {
   const occ=tables.filter(t=>t.status==="occupied").length;
   const sub=cart.reduce((s,i)=>s+i.price*i.qty,0);
   const gstAmt=applyGST?Math.round(sub*0.05):0;
-  const grandTotal=sub+gstAmt+packaging;
+  const preDiscTotal=sub+gstAmt+packaging;
+  const discountAmt=discountOn?Math.round(preDiscTotal*(Number(discountPct)||0)/100):0;
+  const grandTotal=preDiscTotal-discountAmt;
 
   const TABS=[
     {id:"billing",l:"🧾 Billing"},
@@ -1439,6 +1449,21 @@ export default function App() {
                         </div>
                       )}
                     </div>
+                    {/* Discount */}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <label style={{fontSize:12,display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                        <input type="checkbox" checked={discountOn} onChange={e=>setDiscountOn(e.target.checked)} style={{width:"auto"}}/>
+                        Discount
+                      </label>
+                      {discountOn && (
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <input type="number" value={discountPct} onChange={e=>setDiscountPct(e.target.value)} min={0} max={100}
+                            style={{width:52,fontSize:12,padding:"4px 6px",textAlign:"center"}}/>
+                          <span style={{fontSize:12,fontWeight:700}}>%</span>
+                          <span style={{fontSize:12,color:C.danger,fontWeight:700,minWidth:50,textAlign:"right"}}>−{fmt(discountAmt)}</span>
+                        </div>
+                      )}
+                    </div>
                     <div style={{display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:15,marginBottom:10}}>
                       <span>Total</span><span style={{color:C.accent}}>{fmt(grandTotal)}</span>
                     </div>
@@ -1475,7 +1500,7 @@ export default function App() {
                     <div style={{display:"flex",gap:6,marginBottom:8}}>
                       <Btn full v="muted" size="sm" onClick={saveOrder}>💾 Save Order</Btn>
                       <Btn v="danger" size="sm" onClick={()=>{if(!cart.length)return;if(window.confirm("Clear all items from cart?")){
-              setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(localISO());setPackaging(0);setApplyGST(false);setShowMix(false);setMixPay({cash:"",upi:""});
+              setCart([]);setBillCustName("");setBillCustPhone("");setBillDate(localISO());setPackaging(0);setApplyGST(false);setDiscountOn(false);setDiscountPct(10);setShowMix(false);setMixPay({cash:"",upi:""});
               if(selTable){
                 const cleared={id:selTable,status:"free",order:[]};
                 markTableFreed(selTable);
@@ -1569,6 +1594,18 @@ export default function App() {
                         <span style={{fontSize:12,fontWeight:700,color:"#b85c00",minWidth:32,textAlign:"center"}}>{fmt(packaging)}</span>
                         <button onClick={()=>setPackaging(p=>p+10)}
                           style={{width:22,height:22,borderRadius:"50%",border:"none",background:"#b85c00",color:"#fff",cursor:"pointer",fontWeight:800,fontSize:13}}>+</button>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                    <input type="checkbox" checked={discountOn} onChange={e=>setDiscountOn(e.target.checked)} style={{width:"auto",cursor:"pointer"}}/>
+                    <span style={{fontSize:12,cursor:"pointer"}} onClick={()=>setDiscountOn(v=>!v)}>Discount</span>
+                    {discountOn && (
+                      <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
+                        <input type="number" value={discountPct} onChange={e=>setDiscountPct(e.target.value)} min={0} max={100}
+                          style={{width:44,fontSize:12,padding:"3px 5px",textAlign:"center"}}/>
+                        <span style={{fontSize:12,fontWeight:700}}>%</span>
+                        <span style={{fontSize:12,color:"#c0392b",fontWeight:700,minWidth:46,textAlign:"right"}}>−{fmt(discountAmt)}</span>
                       </div>
                     )}
                   </div>
@@ -1968,8 +2005,8 @@ export default function App() {
               ))}
               <button onClick={()=>{
                 const esc=v=>{const s=String(v??"");return(s.includes(",")||s.includes('"'))?'"'+s.replace(/"/g,'""')+'"':s;};
-                const HDR="Bill No,Date,Time,Table,Customer,Phone,Items,Subtotal,GST,Packaging,Total,Payment";
-                const rows=fBills.map(b=>[b.billNo,b.date,b.time,b.table,b.custName||"",b.custPhone||"",b.items.map(i=>`${i.name}x${i.qty}`).join("|"),b.subtotal,b.gst||0,b.packaging||0,b.total,b.paymentMode].map(esc).join(",")).join("\n");
+                const HDR="Bill No,Date,Time,Table,Customer,Phone,Items,Subtotal,GST,Packaging,Discount,Total,Payment";
+                const rows=fBills.map(b=>[b.billNo,b.date,b.time,b.table,b.custName||"",b.custPhone||"",b.items.map(i=>`${i.name}x${i.qty}`).join("|"),b.subtotal,b.gst||0,b.packaging||0,b.discountAmt||0,b.total,b.paymentMode].map(esc).join(",")).join("\n");
                 const blob=new Blob(["\uFEFF"+HDR+"\n"+rows],{type:"text/csv;charset=utf-8"});
                 const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Kaka-Report-${rRange}.csv`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
               }} style={{padding:"6px 16px",borderRadius:20,border:`1px solid ${C.success}`,background:C.success,color:"#fff",fontWeight:600,fontSize:12,cursor:"pointer"}}>📥 Export CSV</button>
@@ -2718,6 +2755,7 @@ export default function App() {
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span>Subtotal</span><span>{fmt(printBill.subtotal)}</span></div>
               {printBill.gst>0 && <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span>GST (5%)</span><span>{fmt(printBill.gst)}</span></div>}
               {printBill.packaging>0 && <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span>Packaging</span><span>{fmt(printBill.packaging)}</span></div>}
+              {printBill.discountAmt>0 && <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span>Discount ({printBill.discountPercent}%)</span><span>−{fmt(printBill.discountAmt)}</span></div>}
               <div style={{display:"flex",justifyContent:"space-between",fontWeight:900,fontSize:15,marginTop:4}}><span>TOTAL</span><span>{fmt(printBill.total)}</span></div>
               <div style={{fontSize:11,marginTop:4}}>Payment: {printBill.paymentMode}</div>
             </div>
