@@ -678,6 +678,8 @@ export default function App() {
   const [editBillOpen,setEditBillOpen]=useState(false);
   const [contactsResult,setContactsResult]=useState(null); // parsed contacts sync result
   const [contactsLoading,setContactsLoading]=useState(false);
+  const [addingContacts,setAddingContacts]=useState(false);
+  const [addedContactsCount,setAddedContactsCount]=useState(null);
   const [modal,setModal]=useState(null);
   const [mdata,setMdata]=useState(null);
   const [rRange,setRRange]=useState("today");
@@ -2484,6 +2486,7 @@ export default function App() {
                 if(!file){return;}
                 setContactsLoading(true);
                 setContactsResult(null);
+                setAddedContactsCount(null);
                 try {
                   const text=await file.text();
                   const ext=file.name.split(".").pop().toLowerCase();
@@ -2535,6 +2538,19 @@ export default function App() {
                     });
                   }
 
+                  // Dedupe phone contacts by phone number (same contact can appear twice in export,
+                  // or two entries can share a number) — keep the entry with a real name if one has it.
+                  const dedupMap=new Map();
+                  let dupesInFile=0;
+                  phoneContacts.forEach(c=>{
+                    const ex=dedupMap.get(c.phone);
+                    if(ex){
+                      dupesInFile++;
+                      if((!ex.name||ex.name==="Unknown")&&c.name&&c.name!=="Unknown") dedupMap.set(c.phone,c);
+                    } else dedupMap.set(c.phone,c);
+                  });
+                  phoneContacts=[...dedupMap.values()];
+
                   // Build set of phone numbers already in phone contacts
                   const phoneNums=new Set(phoneContacts.map(c=>c.phone));
                   // Build set of Kaka Cafe customer phones
@@ -2550,6 +2566,7 @@ export default function App() {
                     totalCafe:customers.length,
                     newToPhone,   // cafe customers missing from phone
                     notInCafe,    // phone contacts not in cafe system
+                    dupesInFile,  // duplicate phone numbers found within the uploaded file
                     fileName:file.name,
                   });
                 } catch(err){
@@ -2581,7 +2598,7 @@ export default function App() {
           )}
 
           {contactsResult && !contactsResult.error && (()=>{
-            const {totalPhone,totalCafe,newToPhone,notInCafe,fileName}=contactsResult;
+            const {totalPhone,totalCafe,newToPhone,notInCafe,dupesInFile,fileName}=contactsResult;
             return (
               <>
                 {/* Summary cards */}
@@ -2653,9 +2670,47 @@ export default function App() {
                     <div style={{fontWeight:700,marginBottom:8,fontSize:14,color:C.muted}}>
                       📵 {notInCafe.length} phone contacts not in Kaka Cafe system
                     </div>
-                    <div style={{fontSize:12,color:C.muted}}>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
                       These are in your phone but never ordered at Kaka Cafe (or ordered without giving phone number).
+                      {dupesInFile>0 && <> Removed {dupesInFile} duplicate number{dupesInFile!==1?"s":""} found within the uploaded file.</>}
                     </div>
+                    <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:8,marginBottom:10}}>
+                      {notInCafe.map((c,i)=>(
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 10px",fontSize:12,borderBottom:i<notInCafe.length-1?`1px solid ${C.border}44`:"none"}}>
+                          <span>{c.name||"Unknown"}</span>
+                          <span style={{color:C.muted}}>{c.phone}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {addedContactsCount!==null ? (
+                      <div style={{fontSize:13,fontWeight:700,color:C.success,textAlign:"center",padding:8}}>
+                        ✅ Added {addedContactsCount} new customer{addedContactsCount!==1?"s":""} to Kaka Cafe
+                      </div>
+                    ) : (
+                      <Btn full v="success" disabled={addingContacts} onClick={async()=>{
+                        setAddingContacts(true);
+                        try{
+                          const today=todayStr();
+                          for(const c of notInCafe){
+                            const key="c"+c.phone;
+                            await fbSet(`customers/${key}`,{
+                              name:c.name&&c.name!=="Unknown"?c.name:"",
+                              phone:c.phone,
+                              visits:0,
+                              firstVisit:today,
+                              lastVisit:"",
+                              lastTable:null,
+                              note:"Imported from contacts",
+                            });
+                          }
+                          setAddedContactsCount(notInCafe.length);
+                          notify(notInCafe.length+" contacts added to Kaka Cafe customers");
+                        }catch(err){
+                          notify("Failed to add some contacts: "+err.message,"danger");
+                        }
+                        setAddingContacts(false);
+                      }}>{addingContacts?"Adding...":`➕ Add all ${notInCafe.length} to Kaka Customers`}</Btn>
+                    )}
                   </Card>
                 )}
 
