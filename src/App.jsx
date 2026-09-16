@@ -724,6 +724,8 @@ export default function App() {
   const [expenses,setExpenses]=useState([]);
   const [expCats,setExpCats]=useState(()=>{try{const s=localStorage.getItem("kaka_exp_cats");return s?JSON.parse(s):["Raw Materials","Salaries","Rent","Utilities","Maintenance","Packaging","Other"];}catch(e){return ["Raw Materials","Salaries","Rent","Utilities","Maintenance","Packaging","Other"];}});
   const [newExp,setNewExp]=useState({cat:"Raw Materials",desc:"",amount:""});
+  const [expDate,setExpDate]=useState(()=>localISO()); // yyyy-mm-dd, defaults to today; editable for back-dated expenses
+  const [editingExp,setEditingExp]=useState(null); // {_key, cat, desc, amount, date} while editing an existing expense
   const [expFilter,setExpFilter]=useState("today");
   const [expCustomFrom,setExpCustomFrom]=useState(()=>localISO());
   const [expCustomTo,setExpCustomTo]=useState(()=>localISO());
@@ -2246,16 +2248,28 @@ export default function App() {
                   <input style={{marginTop:4}} type="number" placeholder="0" value={newExp.amount} onChange={e=>setNewExp(x=>({...x,amount:e.target.value}))}/>
                 </div>
               </div>
+              <div style={{marginBottom:8}}>
+                <label style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>📅 Date</label>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4}}>
+                  <input type="date" value={expDate} max={localISO()} onChange={e=>setExpDate(e.target.value||localISO())} style={{flex:1,minWidth:0}}/>
+                  {expDate!==localISO() && (
+                    <button onClick={()=>setExpDate(localISO())} style={{flexShrink:0,fontSize:11,fontWeight:700,color:C.accent,background:"none",border:`1px solid ${C.accent}`,borderRadius:8,padding:"6px 10px",cursor:"pointer"}}>Today</button>
+                  )}
+                </div>
+              </div>
               <div style={{marginBottom:10}}>
                 <label style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>Description (optional)</label>
                 <input style={{marginTop:4}} placeholder="e.g. Paneer 2kg from supplier" value={newExp.desc} onChange={e=>setNewExp(x=>({...x,desc:e.target.value}))}/>
               </div>
               <Btn full v="primary" onClick={async()=>{
                 if(!newExp.amount||isNaN(Number(newExp.amount))){notify("Enter a valid amount","danger");return;}
-                const exp={cat:newExp.cat,desc:newExp.desc,amount:Number(newExp.amount),date:todayStr(),time:nowStr(),_ts:Date.now()};
+                const [y,m,d]=expDate.split("-");
+                const dateStr=`${parseInt(d,10)}/${parseInt(m,10)}/${y}`;
+                const exp={cat:newExp.cat,desc:newExp.desc,amount:Number(newExp.amount),date:dateStr,time:nowStr(),_ts:Date.now()};
                 await fbPush("expenses",exp);
                 notify("Expense added: "+fmt(exp.amount)+" in "+exp.cat);
                 setNewExp(x=>({...x,desc:"",amount:""}));
+                setExpDate(localISO());
               }}>💾 Add Expense</Btn>
             </Card>
             {/* Manage categories */}
@@ -2333,7 +2347,12 @@ export default function App() {
                               <td style={{padding:"9px 12px",fontSize:12,fontWeight:600}}>{e.cat}</td>
                               <td style={{padding:"9px 12px",fontSize:12,color:C.muted}}>{e.desc||"—"}</td>
                               <td style={{padding:"9px 12px",fontWeight:800,color:C.danger}}>{fmt(e.amount)}</td>
-                              <td style={{padding:"9px 12px"}}>
+                              <td style={{padding:"9px 12px",whiteSpace:"nowrap"}}>
+                                <Btn size="sm" v="ghost" onClick={()=>{
+                                  const iso=toISO(e.date);
+                                  setEditingExp({_key:e._key,cat:e.cat,desc:e.desc||"",amount:String(e.amount),date:iso||localISO()});
+                                }}>✎</Btn>
+                                {" "}
                                 <Btn size="sm" v="danger" onClick={()=>{
                                   if(!window.confirm("Delete this expense?")) return;
                                   if(e._key) fetch(`${FB}/cafes/kaka-main/expenses/${e._key}.json`,{method:"DELETE"});
@@ -2908,6 +2927,50 @@ export default function App() {
                 setCustomers(prev=>prev.filter(c=>c.phone!==editCust.phone));
                 setEditCust(null);notify("Deleted","warn");
               }}>Delete</Btn>}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {editingExp && (
+        <Modal title="Edit Expense" onClose={()=>setEditingExp(null)}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div>
+              <label style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>Category</label>
+              <select value={editingExp.cat} onChange={e=>setEditingExp(x=>({...x,cat:e.target.value}))} style={{marginTop:4,fontSize:13,padding:"8px 10px",width:"100%",borderRadius:8,border:`1px solid ${C.border}`,background:C.card}}>
+                {expCats.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>Amount ₹</label>
+              <input style={{marginTop:4}} type="number" value={editingExp.amount} onChange={e=>setEditingExp(x=>({...x,amount:e.target.value}))}/>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>📅 Date</label>
+              <input style={{marginTop:4}} type="date" value={editingExp.date} max={localISO()} onChange={e=>setEditingExp(x=>({...x,date:e.target.value||localISO()}))}/>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>Description</label>
+              <input style={{marginTop:4}} value={editingExp.desc} onChange={e=>setEditingExp(x=>({...x,desc:e.target.value}))}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full v="success" onClick={async()=>{
+                if(!editingExp.amount||isNaN(Number(editingExp.amount))){notify("Enter a valid amount","danger");return;}
+                const [y,m,d]=editingExp.date.split("-");
+                const dateStr=`${parseInt(d,10)}/${parseInt(m,10)}/${y}`;
+                const updated={cat:editingExp.cat,desc:editingExp.desc,amount:Number(editingExp.amount),date:dateStr};
+                setExpenses(prev=>prev.map(x=>x._key===editingExp._key?{...x,...updated}:x));
+                await fbSet(`expenses/${editingExp._key}`,{...updated,time:nowStr(),_ts:Date.now()});
+                notify("Expense updated");
+                setEditingExp(null);
+              }}>Save</Btn>
+              <Btn v="danger" onClick={()=>{
+                if(!window.confirm("Delete this expense?")) return;
+                fetch(`${FB}/cafes/kaka-main/expenses/${editingExp._key}.json`,{method:"DELETE"});
+                setExpenses(prev=>prev.filter(x=>x._key!==editingExp._key));
+                setEditingExp(null);
+                notify("Deleted","warn");
+              }}>Delete</Btn>
             </div>
           </div>
         </Modal>
